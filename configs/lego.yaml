@@ -1,0 +1,6 @@
+name: "lego"
+exp_name: "lego"
+data_path: './data/lego'
+log_path: './log/lego'
+
+iteration: 20000
