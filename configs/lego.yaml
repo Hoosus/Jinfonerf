@@ -3,4 +3,15 @@ exp_name: "lego"
 data_path: './data/lego'
 log_path: './log/lego'
 
-iteration: 20000
+iteration: 50000
+lr: 0.0005
+lr_decay_it: 500000
+
+N_seen: 1024
+N_unseen: 1
+entropy_loss: true
+smoothing: true
+
+N_uniform: 64
+N_importance: 128
+perturb: 1.0

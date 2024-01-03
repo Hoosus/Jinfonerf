@@ -27,8 +27,8 @@ def load_lego(path, split, samples=None, skip=1):
   H, W = imgs.shape[-3:-1]
   focal = 0.5 * W / np.tan(0.5 * float(transforms['camera_angle_x']))
 
-  dataset['imgs'] = imgs
-  dataset['poses'] = poses
+  dataset['imgs'] = imgs # N, H, W, 3
+  dataset['poses'] = poses # N, 4, 4
   dataset['camera_setting'] = {'resolution': (H, W), 'focal': focal}
 
   print(f"loaded {imgs.shape[0]} samples of shape ({H}, {W}), focal={focal}")
