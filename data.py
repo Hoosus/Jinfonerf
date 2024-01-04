@@ -18,6 +18,7 @@ def load_lego(path, split, samples=None, skip=1):
   for sample in samples:
     frame = transforms['frames'][sample]
     img = imageio.imread(os.path.join(path, frame['file_path'] + ".png"))
+    img = np.array(img).astype(np.float32) / 255.0
     imgs.append(img[None, ...])
     poses.append(np.array(frame['transform_matrix'])[None, ...])
 
@@ -30,6 +31,7 @@ def load_lego(path, split, samples=None, skip=1):
   dataset['imgs'] = imgs # N, H, W, 3
   dataset['poses'] = poses # N, 4, 4
   dataset['camera_setting'] = {'resolution': (H, W), 'focal': focal}
+  dataset["split"] = split
 
   print(f"loaded {imgs.shape[0]} samples of shape ({H}, {W}), focal={focal}")
 

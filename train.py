@@ -1,10 +1,16 @@
 import numpy as np
 import jittor as jt
 import yaml
+from tqdm import tqdm
+import copy
+import os
+from pathlib import Path
+
 from data import load_lego
 from utils import get_datetime_str, parser_parse_args
 from model import NeRF
 from render import get_rays, render
+from evaluate import evaluate
 
 def train(config, model, dataset, log_path):
   train_dataset = dataset["train"]
@@ -16,20 +22,24 @@ def train(config, model, dataset, log_path):
     "N_importance": config["N_importance"],
     "perturb": config["perturb"]
   }
+  render_settings_test = copy.deepcopy(render_settings)
+  render_settings_test["perturb"] = False
 
   model.train()
   N_iter = config["iteration"]
-  for i in range(N_iter):
+  for i in tqdm(range(N_iter)):
     N_seen = config["N_seen"]
     if N_seen > 0:  
       # ------- Select One Image -------
       img_id = np.random.choice(train_dataset_size)
       image_gt = train_dataset["imgs"][img_id]
+      image_gt = image_gt[..., :3] * image_gt[...,-1:] + (1.0 - image_gt[..., -1:])
       pose_gt = train_dataset["poses"][img_id]
       H, W = image_gt.shape[:2]
 
       # TODO
-      print("Center Cropping Not Implemented!")
+      # print("Center Cropping Not Implemented!")
+      pass
 
       coords_i, coords_j = np.meshgrid(np.arange(H), np.arange(W), indexing="ij")
       coords_i = coords_i.reshape(-1, 1) # (H*W, 1)
@@ -45,21 +55,25 @@ def train(config, model, dataset, log_path):
 
       if config["smoothing"]:
         # TODO
-        print("Smoothing Not Implemented!")
+        # print("Smoothing Not Implemented!")
         # See GetNearC2W in utils/generate_near_c2w.py
+        pass
 
-
+      # from evaluate import save_rgb
+      # save_rgb(image_gt, os.path.join(log_path, "train_gt.jpg"))
 
     N_unseen = config["N_unseen"]
     if N_unseen > 0:
       # TODO
-      print("Sampling Unseen Rays Not Implemented")
+      # print("Sampling Unseen Rays Not Implemented")
+      pass
 
     # TODO
     all_rays_o = rays_o
     all_rays_d = rays_d
 
-    render_rgb = render(model, all_rays_o, all_rays_d, train_dataset["camera_setting"], render_settings)
+    render_results = render(model, all_rays_o, all_rays_d, train_dataset["camera_setting"], render_settings)
+    render_rgb = render_results["rgb"]
 
     optimizer.zero_grad()
     mse_loss = jt.mean(jt.sqr((render_rgb - target)))
@@ -68,20 +82,18 @@ def train(config, model, dataset, log_path):
     loss = mse_loss
     print(f"iteration {i}, MSELoss = {mse_loss.item()}")
 
-    loss.backward()
-    optimizer.step()
-
+    optimizer.step(loss)
 
     # ------- Update Learning Rate -------
     decay_rate = 0.1
     decay_it = config["lr_decay_it"]
-    new_lrate = args["lr"] * (decay_rate ** (i / decay_it))
-    print("new learning rate is", new_lrate)
+    new_lrate = config["lr"] * (decay_rate ** (i / decay_it))
+    # print("new learning rate is", new_lrate)
     for param_group in optimizer.param_groups:
         param_group['lr'] = new_lrate
 
-    # TODO: delete this
-    break
+    if i % config["evaluate_iter"] == 0:
+      evaluate(i, log_path, model, dataset["val"], render_settings_test)
 
 if __name__ == "__main__":
   args = parser_parse_args()
@@ -93,14 +105,17 @@ if __name__ == "__main__":
   data_path = config["data_path"]
   exp_name = config["exp_name"]
   log_path = f"./logs/{exp_name}_{get_datetime_str()}"
+  Path(log_path).mkdir(parents=True, exist_ok=False)
 
   if name == "lego":
     dataset = {
-      'train' : load_lego(data_path, 'train', samples=[26, 86, 2, 55]),
+      'train' : load_lego(data_path, 'train', samples=None),#[26, 86, 2, 55]),
       'val' : load_lego(data_path, 'val', skip=8),
       'test' : load_lego(data_path, 'test', skip=8)
     }
   
+  jt.flags.use_cuda = 2
+
   model = NeRF()
   
   train(config, model, dataset, log_path)

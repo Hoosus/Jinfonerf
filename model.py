@@ -2,7 +2,7 @@ import jittor as jt
 from jittor import nn, Module
 
 class NeRF(Module):
-  def __init__ (self, depth=8, width=256, input_channel=[3, 3], output_channel=4, skips=[4]):
+  def __init__ (self, depth=8, width=256, input_channel=[3, 3], output_channel=3, skips=[4]):
     super(NeRF, self).__init__()
     self.depth = depth
     self.width = width
