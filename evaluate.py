@@ -5,7 +5,7 @@ import jittor as jt
 import imageio
 import numpy as np
 
-from render import get_rays, render
+from render import get_rays, render, get_coords
 
 def save_rgb(rgb, dir):
   rgb = (np.clip(rgb, 0.0, 1.0) * 255).astype(np.uint8)
@@ -16,8 +16,9 @@ def save_depth(depth, dir):
   depth = (depth / 5 * 255).astype(np.uint8)
   imageio.imwrite(dir, depth)
 
-def evaluate(iter, log_path, model, dataset, render_settings):
+def evaluate(iter, log_path, model, model_fine, dataset, render_settings):
   model.eval()
+  model_fine.eval()
 
   split = dataset["split"]
   log_dir = os.path.join(log_path, f"{split}_iter{iter}")
@@ -37,15 +38,13 @@ def evaluate(iter, log_path, model, dataset, render_settings):
     H, W = 256, 256
 
     with jt.no_grad():
-      coords_i, coords_j = np.meshgrid(np.arange(H), np.arange(W), indexing="ij")
-      coords_i = coords_i.reshape(-1, 1) # (H*W, 1)
-      coords_j = coords_j.reshape(-1, 1) # (H*W, 1)
-      coords = np.concatenate((coords_i, coords_j), axis=-1)
+      coords = get_coords(H, W)
       rays_o, rays_d = get_rays(coords, pose_gt, camera)
-      render_results = render(model, rays_o, rays_d, camera, render_settings)
+      render_results = render(model, model_fine, rays_o, rays_d, camera, render_settings)
       rgb_dir = os.path.join(log_dir, f"{i}_rgb.jpg")
       depth_dir = os.path.join(log_dir, f'{i}_depth.png')
       save_rgb(render_results["rgb"].reshape(H, W, -1).cpu().numpy(), rgb_dir)
       save_depth(render_results["depth"].reshape(H, W).cpu().numpy(), depth_dir)
 
   model.train()
+  model_fine.train()

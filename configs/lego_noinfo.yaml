@@ -1,7 +1,7 @@
 name: "lego"
-exp_name: "lego"
+exp_name: "lego_noinfo"
 data_path: './data/lego'
-log_path: './log/lego'
+log_path: './log/lego_noinfo'
 
 fewshot: false
 fewshot_train: [26, 86, 2, 55]
@@ -11,7 +11,7 @@ lr: 0.0005
 lr_decay_it: 500000
 
 N_seen: 1024
-N_unseen: 1024
+N_unseen: 0
 smoothing: false
 entropy_lambda: 0.001
 
