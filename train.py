@@ -9,8 +9,9 @@ from pathlib import Path
 from data import load_lego
 from utils import get_datetime_str, parser_parse_args
 from model import NeRF
-from render import get_rays, render
+from render import get_rays, render, get_near_pose
 from evaluate import evaluate
+from loss import KL_loss
 
 def train(config, model, dataset, log_path):
   train_dataset = dataset["train"]
@@ -54,10 +55,8 @@ def train(config, model, dataset, log_path):
       rays_o, rays_d = get_rays(coords, pose_gt, train_dataset["camera_setting"])
 
       if config["smoothing"]:
-        # TODO
-        # print("Smoothing Not Implemented!")
-        # See GetNearC2W in utils/generate_near_c2w.py
-        pass
+        near_pose_seen = get_near_pose(pose_gt)
+        rays_o_near_seen, rays_d_near_seen = get_rays(coords, near_pose_seen, train_dataset["camera_setting"])
 
       # from evaluate import save_rgb
       # save_rgb(image_gt, os.path.join(log_path, "train_gt.jpg"))
@@ -68,19 +67,24 @@ def train(config, model, dataset, log_path):
       # print("Sampling Unseen Rays Not Implemented")
       pass
 
-    # TODO
-    all_rays_o = rays_o
-    all_rays_d = rays_d
 
-    render_results = render(model, all_rays_o, all_rays_d, train_dataset["camera_setting"], render_settings)
+    render_results = render(model, rays_o, rays_d, train_dataset["camera_setting"], render_settings)
     render_rgb = render_results["rgb"]
 
+    if config["smoothing"]:
+      render_results_near_seen = render(model, rays_o_near_seen, rays_d_near_seen, train_dataset["camera_setting"], render_settings)
+
     optimizer.zero_grad()
-    mse_loss = jt.mean(jt.sqr((render_rgb - target)))
+    loss = jt.mean(jt.sqr((render_rgb - target)))
+    print(f"iteration {i}, MSELoss = {loss.item()}")
+    
     # TODO: add more losses 
 
-    loss = mse_loss
-    print(f"iteration {i}, MSELoss = {mse_loss.item()}")
+    if config["smoothing"]:
+      smoothing_loss = KL_loss(render_results["alpha"], render_results_near_seen["alpha"])
+      print(f"iteration {i}, Seen Smoothing Loss = {smoothing_loss.item()}")
+      loss += smoothing_loss
+
 
     optimizer.step(loss)
 

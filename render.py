@@ -16,22 +16,22 @@ def anaylze_output(output, t_vals, rays_d):
   cum_alpha = jt.concat([jt.ones_like(cum_alpha[:, :1]), cum_alpha[:, :-1]], dim=-1) # (N, N_uniform)
   weights = alpha * cum_alpha # (N, N_uniform)
 
-  print("weights", weights.min(), weights.max())
-  print("rgb", rgb.min(), rgb.max())
+  # print("weights", weights.min(), weights.max())
+  # print("rgb", rgb.min(), rgb.max())
 
   rgb_map = jt.sum(weights[..., None] * rgb, dim=1) # (N, 3)
   depth_map = jt.sum(weights * t_vals, dim=-1) # (N)
   occupancy_map = jt.sum(weights, -1) # (N)
   
-  print("occ", occupancy_map.min(), occupancy_map.max())
+  # print("occ", occupancy_map.min(), occupancy_map.max())
 
   disp_map = 1.0 / jt.maximum(depth_map / occupancy_map, 1e-10 * jt.ones(depth_map.shape[0]))
 
   rgb_map = rgb_map + (1.0 - occupancy_map)[..., None]
   
-  print("rgb_map", rgb_map.min(), rgb_map.max())
+  # print("rgb_map", rgb_map.min(), rgb_map.max())
 
-  return rgb_map, depth_map, occupancy_map, disp_map, weights
+  return rgb_map, depth_map, occupancy_map, disp_map, weights, alpha
 
 
 def query_network(model, x, v):
@@ -51,9 +51,33 @@ def get_rays(coords, pose, camera):
   rays_d = np.stack([(coords_i - 0.5 * W) / f, -(coords_j - 0.5 * H) / f, -np.ones(coords.shape[0])], -1) # (N, 3)
   return jt.Var(rays_o), jt.Var(rays_d)
 
-def sample_pdf():
-  # TODO
-  pass
+def sample_pdf(mids, weights, N_importance, perturb):
+  weights = weights + 1e-5 # (N, N_uniform - 2)
+  pdf = weights / jt.sum(weights, -1, keepdims=True) # (N, N_uniform - 1)
+  cdf = jt.cumsum(pdf, -1)
+  cdf = jt.concat([jt.zeros(cdf.shape[:-1] + [1]), cdf], -1) # (N, N_uniform - 1)
+
+  rn_shape = cdf.shape[:-1] + [N_importance]
+  if perturb:
+    rn = jt.linspace(0., 1., N_importance).expand(rn_shape).contiguous()
+  else:
+    rn = jt.rand(rn_shape).contiguous()
+  
+  inds = jt.searchsorted(cdf, rn, right=True)
+  low = jt.maximum(jt.zeros_like(inds), inds - 1)
+  high = jt.minimum(jt.ones_like(inds) * (cdf.shape[-1] - 1), inds) # (N, N_importance)
+  inds = jt.stack([low, high], -1)
+
+  matched_shape = inds.shape[:2] + [cdf.shape[-1]] # (N, N_importance, N_uniform - 1)
+  cdf_g = jt.gather(cdf.unsqueeze(1).expand(matched_shape), 2, inds) # (N, N_importance, 2)
+  bins_g = jt.gather(mids.unsqueeze(1).expand(matched_shape), 2, inds) 
+
+  denom = cdf_g[...,1] - cdf_g[...,0]
+  denom = jt.where(denom < 1e-5, jt.ones_like(denom), denom)
+  t = (rn - cdf_g[...,0]) / denom
+  samples = bins_g[...,0] + t * (bins_g[...,1] - bins_g[...,0])
+
+  return samples
 
 def render(model, rays_o, rays_d, camera, args):
   H, W = camera['resolution']
@@ -77,21 +101,42 @@ def render(model, rays_o, rays_d, camera, args):
   v = v.repeat(1, N_uniform, 1) # (N, N_uniform, 3)
 
   output = query_network(model, x, v)
-  rgb_map, depth_map, occupancy_map, disp_map, weights = anaylze_output(output, t_vals, rays_d)
+  rgb_map, depth_map, occupancy_map, disp_map, weights, alpha = anaylze_output(output, t_vals, rays_d)
 
   if N_importance > 0:
-    # TODO sample_pdf
-    pass
+    rgb_map_0, disp_map_0, occupancy_map_0 = rgb_map, disp_map, occupancy_map
+    mids = (t_vals[..., 1:] + t_vals[..., :-1]) / 2.0 # (N, N_uniform - 1)
+    t_samples = sample_pdf(mids, weights[..., 1:-1], N_importance, perturb)
+    print("not finished!")
   
   results = {
     "rgb": rgb_map,
     "depth": depth_map,
     "occupancy": occupancy_map,
     "disp": disp_map,
+    "alpha": alpha
   }
   
   return results
 
+def get_near_pose(poses):
+  near_trans = 0.1
+  phi = 5 * (np.pi / 180.)
+
+  X = np.random.rand(3) * 2 * phi - phi # (-phi, phi)
+  x, y, z = X
+
+  rot_x = jt.array([[1, 0, 0],
+                    [0, np.cos(x), -np.sin(x)],
+                    [0, np.sin(x), np.cos(x)]])
+  rot_y = jt.array([[np.cos(y), 0, -np.sin(y)],
+                    [0, 1, 0],
+                    [np.sin(y), 0, np.cos(y)]])
+  rot_z = jt.array([[np.cos(z), -np.sin(z), 0],
+                    [np.sin(z), np.cos(z), 0],
+                    [0, 0, 1]])
+  rot_mat = jt.matmul(rot_x, jt.matmul(rot_y, rot_z))
+  return rot_mat
 
 
 
