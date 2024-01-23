@@ -151,8 +151,8 @@ def train(config, model, model_fine, dataset, log_path):
     if i % config["evaluate_iter"] == 0 and i > 0:
       evaluate(i, log_path, model, model_fine, dataset["val"], render_settings_test)
       evaluate(i, log_path, model, model_fine, dataset["test"], render_settings_test)
-      jt.save(model.state_dict(), os.path.join(log_path, f"ckpt_{i}.pth"))
-      jt.save(model_fine.state_dict(), os.path.join(log_path, f"ckpt_fine_{i}.pth"))
+      jt.save(model.state_dict(), os.path.join(log_path, f"ckpt_{i}.pkl"))
+      jt.save(model_fine.state_dict(), os.path.join(log_path, f"ckpt_fine_{i}.pkl"))
 
 if __name__ == "__main__":
   args = parser_parse_args()
