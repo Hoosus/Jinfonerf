@@ -3,10 +3,10 @@ exp_name: "lego_noinfo"
 data_path: './data/lego'
 log_path: './log/lego_noinfo'
 
-fewshot: false
+fewshot: true
 fewshot_train: [26, 86, 2, 55]
 
-iteration: 500001
+iteration: 50001
 lr: 0.0005
 lr_decay_it: 500000
 
@@ -19,4 +19,7 @@ N_uniform: 64
 N_importance: 128
 perturb: true
 
-evaluate_iter: 2500
+precrop_it: 500
+
+evaluate_iter: 5000
+

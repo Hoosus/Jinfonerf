@@ -1,7 +1,7 @@
 name: "lego"
-exp_name: "lego"
+exp_name: "lego_smooth"
 data_path: './data/lego'
-log_path: './log/lego'
+log_path: './log/lego_smooth'
 
 fewshot: true
 fewshot_train: [26, 86, 2, 55]
@@ -12,7 +12,7 @@ lr_decay_it: 500000
 
 N_seen: 1024
 N_unseen: 1024
-smoothing: false
+smoothing: true
 entropy_lambda: 0.001
 
 N_uniform: 64
@@ -21,4 +21,4 @@ perturb: true
 
 precrop_it: 500
 
-evaluate_iter: 2500
+evaluate_iter: 5000

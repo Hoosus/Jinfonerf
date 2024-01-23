@@ -33,7 +33,7 @@ def train(config, model, model_fine, dataset, log_path):
     if N_seen > 0:  
       # ------- Select One Image -------
       if config["fewshot"]:
-        img_id = np.random_choice(config["fewshot_train"])
+        img_id = np.random.choice(config["fewshot_train"])
       else:
         img_id = np.random.choice(train_dataset_size)
 
@@ -44,11 +44,12 @@ def train(config, model, model_fine, dataset, log_path):
       pose_gt = train_dataset["poses"][img_id, :3, :4]
       H, W = image_gt.shape[:2]
 
-      # TODO
-      # print("Center Cropping Not Implemented!")
-      pass
-
       coords = get_coords(H, W)
+      if i < config["precrop_it"]:
+        dH, dW = H // 4, W // 4 
+        coords = get_coords(H // 2, W // 2)
+        coords[..., 0] += dH
+        coords[..., 1] += dW
 
       # ------- Select Random Rays -------
       samples = np.random.choice(coords.shape[0], N_seen, replace=False)
@@ -72,7 +73,6 @@ def train(config, model, model_fine, dataset, log_path):
 
     N_unseen = config["N_unseen"]
     if N_unseen > 0:
-      # TODO
       img_id_un = np.random.choice(train_dataset_size)
       
       image_gt_un = train_dataset["imgs"][img_id_un]
@@ -80,10 +80,12 @@ def train(config, model, model_fine, dataset, log_path):
       pose_gt_un = train_dataset["poses"][img_id_un, :3, :4]
       H, W = image_gt_un.shape[:2]
 
-      # center cropping not Implemented
-      # TODO
-
       coords_un = get_coords(H, W)
+      if i < config["precrop_it"]:
+        dH, dW = H // 4, W // 4 
+        coords_un = get_coords(H // 2, W // 2)
+        coords_un[..., 0] += dH
+        coords_un[..., 1] += dW
 
       # ------- Select Random Rays -------
       samples = np.random.choice(coords_un.shape[0], N_unseen, replace=False)
@@ -106,6 +108,7 @@ def train(config, model, model_fine, dataset, log_path):
         render_results_near_un = render(model, model_fine, rays_o_near_un, rays_d_near_un, train_dataset["camera_setting"], render_settings)
 
     optimizer.zero_grad()
+    # print(render_rgb, target)
     loss = jt.mean(jt.sqr(render_rgb - target))
     print(f"iteration {i}, MSELoss = {loss.item()}")
     if config["N_importance"] > 0:
@@ -148,6 +151,8 @@ def train(config, model, model_fine, dataset, log_path):
     if i % config["evaluate_iter"] == 0 and i > 0:
       evaluate(i, log_path, model, model_fine, dataset["val"], render_settings_test)
       evaluate(i, log_path, model, model_fine, dataset["test"], render_settings_test)
+      jt.save(model.state_dict(), os.path.join(log_path, f"ckpt_{i}.pth"))
+      jt.save(model_fine.state_dict(), os.path.join(log_path, f"ckpt_fine_{i}.pth"))
 
 if __name__ == "__main__":
   args = parser_parse_args()

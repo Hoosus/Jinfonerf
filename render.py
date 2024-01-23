@@ -41,7 +41,8 @@ def analyze_output(output, t_vals, rays_d):
 
   rgb_map = rgb_map + (1.0 - occupancy_map)[..., None]
   
-  print("rgb_map", rgb_map.min(), rgb_map.max())
+  # print("rgb_map", rgb_map.min(), rgb_map.max())
+  # print("rgb", rgb_map, "acc", occupancy_map)
 
   return rgb_map, depth_map, occupancy_map, disp_map, weights, alpha, d
 
@@ -75,7 +76,7 @@ def sample_pdf(mids, weights, N_importance, perturb):
   cdf = jt.concat([jt.zeros(cdf.shape[:-1] + [1]), cdf], -1) # (N, N_uniform - 1)
 
   rn_shape = cdf.shape[:-1] + [N_importance]
-  if perturb:
+  if not perturb:
     rn = jt.linspace(0., 1., N_importance).expand(rn_shape).contiguous()
   else:
     rn = jt.rand(rn_shape).contiguous()
@@ -126,7 +127,7 @@ def _render(model, model_fine, rays_o, rays_d, camera, args):
   rgb_map, depth_map, occupancy_map, disp_map, weights, alpha, dists = analyze_output(output, t_vals, rays_d)
 
   if N_importance > 0:
-    rgb_map_0, disp_map_0, occupancy_map_0 = rgb_map, disp_map, occupancy_map
+    rgb_map_0, disp_map_0, occupancy_map_0, depth_map_0 = rgb_map, disp_map, occupancy_map, depth_map
     mids = (t_vals[..., 1:] + t_vals[..., :-1]) / 2.0 # (N, N_uniform - 1)
     t_samples = sample_pdf(mids, weights[..., 1:-1], N_importance, perturb)
     _, t_vals = jt.concat([t_vals, t_samples], -1).argsort()
@@ -140,19 +141,20 @@ def _render(model, model_fine, rays_o, rays_d, camera, args):
     "rgb": rgb_map,
     "depth": depth_map,
     "occupancy": occupancy_map,
-    "disp": disp_map,
+    # "disp": disp_map,
     "alpha": alpha,
-    "dists": dists
+    # "dists": dists
   }
 
   if N_importance > 0:
     results["rgb0"] = rgb_map_0
-    results['disp0'] = disp_map_0
+    # results['disp0'] = disp_map_0
     results['occupancy0'] = occupancy_map_0
+    results['depth0'] = depth_map_0
   
   return results
 
-def render(model, model_fine, rays_o, rays_d, camera, args):
+def render(model, model_fine, rays_o, rays_d, camera, args, cpu=False):
   N_uniform = args["N_uniform"]
   N_importance = args["N_importance"]
 
@@ -164,34 +166,57 @@ def render(model, model_fine, rays_o, rays_d, camera, args):
 
   # print("maximum:", mx, "total:", N)
   results = None
+  if cpu:
+    rgb = []
+    depth = []
+    rgb0 = []
+    depth0 = []
 
   for i in range(0, N, mx):
     res = _render(model, model_fine, rays_o[i : min(i + mx, N)], rays_d[i : min(i + mx, N)], camera, args)
-    if results is None:
-      results = res
+    if not cpu:
+      if results is None:
+        results = res
+      else:
+        results = {k : jt.concat([results[k], res[k]], 0) for k in res.keys() }
     else:
-      results = {k : jt.concat([results[k], res[k]], 0) for k in res.keys() }
-
-  return results
+      rgb.append(res["rgb"].cpu().numpy())
+      depth.append(res["depth"].cpu().numpy())
+      rgb0.append(res["rgb0"].cpu().numpy())
+      depth0.append(res["depth0"].cpu().numpy())
+  if cpu:
+    rgb = np.concatenate(rgb, axis=0)
+    depth = np.concatenate(depth, axis=0)
+    rgb0 = np.concatenate(rgb0, axis=0)
+    depth0 = np.concatenate(depth0, axis=0)
+    return rgb, depth, rgb0, depth0
+  else:
+    return results
 
 def get_near_pose(poses):
+  rot = poses[:3, :3]
+  pos = poses[:3, 3:]
+
   near_trans = 0.1
   phi = 5 * (np.pi / 180.)
 
   X = np.random.rand(3) * 2 * phi - phi # (-phi, phi)
   x, y, z = X
 
-  rot_x = jt.array([[1, 0, 0],
+  rot_x = np.array([[1, 0, 0],
                     [0, np.cos(x), -np.sin(x)],
                     [0, np.sin(x), np.cos(x)]])
-  rot_y = jt.array([[np.cos(y), 0, -np.sin(y)],
+  rot_y = np.array([[np.cos(y), 0, -np.sin(y)],
                     [0, 1, 0],
                     [np.sin(y), 0, np.cos(y)]])
-  rot_z = jt.array([[np.cos(z), -np.sin(z), 0],
+  rot_z = np.array([[np.cos(z), -np.sin(z), 0],
                     [np.sin(z), np.cos(z), 0],
                     [0, 0, 1]])
-  rot_mat = jt.matmul(rot_x, jt.matmul(rot_y, rot_z))
-  return rot_mat
+  rot_mat = np.matmul(rot_x, np.matmul(rot_y, rot_z))
+  
+  pos = np.matmul(rot_mat, pos)
+  rot = np.matmul(rot_mat, rot)
+  return np.concatenate((rot, pos), axis=-1)
 
 
 

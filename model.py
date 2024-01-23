@@ -10,8 +10,8 @@ class Embedder:
   def embed(self, x):
     results = [x]
     for f in self.freq_bands:
-      results.append(jt.cos(x * f))
       results.append(jt.sin(x * f))
+      results.append(jt.cos(x * f))
     return jt.concat(results, dim=-1)
 
 class NeRF(Module):
@@ -25,7 +25,7 @@ class NeRF(Module):
     self.input_channel = input_channel
     self.output_channel = output_channel
     self.skips = skips
-    self.layers = [nn.Linear(input_channel[0], width)]
+    self.layers = nn.ModuleList(nn.Linear(input_channel[0], width))
     for i in range(depth - 1):
       self.layers.append(nn.Linear(width + input_channel[0] if i in skips else width, width))
     self.alpha_layer = nn.Linear(width, 1)
@@ -35,7 +35,8 @@ class NeRF(Module):
 
   def execute(self, position, view):
     position, view = self.embedder_pos.embed(position), self.embedder_dir.embed(view)
-    x, v = position, view
+    # print(position, view)
+    x = position
     for i, layer in enumerate(self.layers):
       x = nn.relu(layer(x))
       if i in self.skips:
